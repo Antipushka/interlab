@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "interlab"
+version = "0.1.0"
+description = "Loss-conscious architectural PDF to SVG prototype"
+requires-python = ">=3.11"
+dependencies = [
+  "PyMuPDF>=1.24,<2",
+  "Shapely>=2.0,<3",
+  "Pillow>=10,<12",
+  "numpy>=1.26,<3",
+  "opencv-python-headless>=4.9,<5",
+  "CairoSVG>=2.7,<3",
+]
+
+[project.scripts]
+interlab = "interlab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
