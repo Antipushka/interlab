@@ -28,8 +28,12 @@ def export_svg(model: PageModel, path: Path, ownership: dict[str,str] | None = N
     for obj in model.vectors:
         s=obj.style; attrs = f'stroke="{_color(s.stroke)}" fill="{_color(s.fill)}" stroke-width="{s.width}" stroke-opacity="{s.opacity}" fill-opacity="{s.fill_opacity}"'
         if s.dashes and s.dashes != "[] 0": attrs += f' stroke-dasharray="{html.escape(str(s.dashes))}"'
+        cap = s.line_cap[-1] if isinstance(s.line_cap, (list, tuple)) else s.line_cap
+        if cap in (0, 1, 2): attrs += f' stroke-linecap="{("butt", "round", "square")[cap]}"'
+        if s.line_join in (0, 1, 2): attrs += f' stroke-linejoin="{("miter", "round", "bevel")[s.line_join]}"'
         relation = ownership.get(obj.id) if ownership else None
-        rows.append(f'<path id="{obj.id}" d="{_path(obj)}" {attrs} data-ownership="{relation or "global"}"/>')
+        sources=html.escape(",".join(obj.source_ids), quote=True)
+        rows.append(f'<path id="{obj.id}" d="{_path(obj)}" {attrs} data-source-ids="{sources}" data-ownership="{relation or "global"}"/>')
     rows += ['</g>', '<g id="texts">']
     for t in model.texts:
         color=f'#{t.color & 0xffffff:06x}'; transform=""
@@ -38,4 +42,3 @@ def export_svg(model: PageModel, path: Path, ownership: dict[str,str] | None = N
         rows.append(f'<text id="{t.id}"{transform} font-family="{html.escape(t.font)}" font-size="{t.size}" fill="{color}">{html.escape(t.text)}</text>')
     rows += ['</g>', '</svg>']
     path.write_text("\n".join(rows), encoding="utf-8")
-

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict
 from math import hypot
 
 from .model import PageModel, VectorObject
@@ -44,11 +43,16 @@ def normalize(model: PageModel, tolerance: float = 1e-5) -> tuple[PageModel, dic
             cross = (common[0]-pa[0])*(pb[1]-common[1])-(common[1]-pa[1])*(pb[0]-common[0])
             scale = max(1.0, hypot(common[0]-pa[0], common[1]-pa[1]), hypot(pb[0]-common[0], pb[1]-common[1]))
             if abs(cross) > tolerance * scale: continue
+            # The common endpoint must lie between the two remaining endpoints.
+            # Otherwise two overlapping rays would be incorrectly enlarged.
+            dot = (pa[0]-common[0])*(pb[0]-common[0]) + (pa[1]-common[1])*(pb[1]-common[1])
+            if dot >= 0: continue
             oa.items = [{"type":"line", "p1":pa, "p2":pb}]; oa.source_ids += ob.source_ids
             oa.rect = [min(pa[0],pb[0]), min(pa[1],pb[1]), max(pa[0],pb[0]), max(pa[1],pb[1])]
             unique.pop(b); merged_count += 1; changed = True; break
     result = PageModel(model.width, model.height, unique, deepcopy(model.texts))
-    return result, {"duplicates_removed": duplicates, "collinear_merges": merged_count,
+    return result, {"removed_exact_duplicates": duplicates, "merged_collinear_segments": merged_count,
+        # Backwards-compatible keys used by the first prototype.
+        "duplicates_removed": duplicates, "collinear_merges": merged_count,
         "input_objects": len(model.vectors), "output_objects": len(unique),
         "reduction_percent": (100 * (len(model.vectors)-len(unique))/len(model.vectors)) if model.vectors else 0}
-

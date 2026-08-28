@@ -67,11 +67,12 @@ def inspect_pdf(path: Path) -> tuple[dict[str, Any], PageModel]:
         model = extract_page(page)
         if first is None:
             first = model
-        widths, strokes, fills, dashes, primitives, fonts, rotations = Counter(), Counter(), Counter(), Counter(), Counter(), Counter(), Counter()
+        widths, strokes, fills, dashes, primitives, fonts, rotations, caps, joins = (Counter() for _ in range(9))
         for obj in model.vectors:
             widths[round(obj.style.width, 6)] += 1
             strokes[str(obj.style.stroke)] += 1; fills[str(obj.style.fill)] += 1
             dashes[str(obj.style.dashes)] += 1
+            caps[str(obj.style.line_cap)] += 1; joins[str(obj.style.line_join)] += 1
             primitives.update(x["type"] for x in obj.items)
         for text in model.texts:
             fonts[text.font] += 1
@@ -81,9 +82,10 @@ def inspect_pdf(path: Path) -> tuple[dict[str, Any], PageModel]:
             "text_span_count": len(model.texts), "text_character_count": sum(len(x.text) for x in model.texts),
             "image_count": len(page.get_images(full=True)), "stroke_widths": dict(widths), "stroke_colors": dict(strokes),
             "fills": dict(fills), "dash_patterns": dict(dashes), "primitive_types": dict(primitives),
+            "line_caps": dict(caps), "line_joins": dict(joins),
             "clipping": {"available": True, "objects_with_scissor": sum(x.clip is not None for x in model.vectors)},
-            "fonts": dict(fonts), "text_rotations_degrees": dict(rotations)})
+            "fonts": dict(fonts), "text_rotations_degrees": dict(rotations),
+            "text_transforms": dict(Counter(str(x.matrix) for x in model.texts))})
     if first is None:
         raise ValueError("PDF has no pages")
     return {"source": str(path), "page_count": len(doc), "pages": pages}, first
-
