@@ -6,6 +6,10 @@ from pathlib import Path
 from .model import PageModel, VectorObject
 
 
+LINE_CAP_TO_SVG = {0: "butt", 1: "round", 2: "square"}
+LINE_JOIN_TO_SVG = {0: "miter", 1: "round", 2: "bevel"}
+
+
 def _color(c, default="none"):
     if c is None: return default
     return "#" + "".join(f"{max(0,min(255,round(x*255))):02x}" for x in c[:3])
@@ -34,10 +38,13 @@ def export_svg(model: PageModel, path: Path, ownership: dict[str,str] | None = N
     rows = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{model.width}pt" height="{model.height}pt" viewBox="0 0 {model.width} {model.height}">', '<g id="vectors">']
     for obj in model.vectors:
         s=obj.style; attrs = f'stroke="{_color(s.stroke)}" fill="{_color(s.fill)}" stroke-width="{s.width}" stroke-opacity="{s.opacity}" fill-opacity="{s.fill_opacity}"'
-        if s.dashes and s.dashes != "[] 0": attrs += f' stroke-dasharray="{html.escape(str(s.dashes))}"'
-        cap = s.line_cap[-1] if isinstance(s.line_cap, (list, tuple)) else s.line_cap
-        if cap in (0, 1, 2): attrs += f' stroke-linecap="{("butt", "round", "square")[cap]}"'
-        if s.line_join in (0, 1, 2): attrs += f' stroke-linejoin="{("miter", "round", "bevel")[s.line_join]}"'
+        if s.dashes:
+            attrs += ' stroke-dasharray="' + " ".join(f"{value:g}" for value in s.dashes) + '"'
+            attrs += f' stroke-dashoffset="{s.dash_offset:g}"'
+        if s.line_cap is not None:
+            attrs += f' stroke-linecap="{LINE_CAP_TO_SVG[s.line_cap]}"'
+        if s.line_join is not None:
+            attrs += f' stroke-linejoin="{LINE_JOIN_TO_SVG[s.line_join]}"'
         relation = ownership.get(obj.id) if ownership else None
         sources=html.escape(",".join(obj.source_ids), quote=True)
         rows.append(f'<path id="{obj.id}" d="{_path(obj)}" {attrs} data-source-ids="{sources}" data-ownership="{relation or "global"}"/>')

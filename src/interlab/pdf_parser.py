@@ -58,7 +58,7 @@ def inspect_pdf(path: Path) -> tuple[dict[str, Any], PageModel]:
         for obj in model.vectors:
             widths[round(obj.style.width, 6)] += 1
             strokes[str(obj.style.stroke)] += 1; fills[str(obj.style.fill)] += 1
-            dashes[str(obj.style.dashes)] += 1
+            dashes[str((obj.style.dashes, obj.style.dash_offset))] += 1
             caps[str(obj.style.line_cap)] += 1; joins[str(obj.style.line_join)] += 1
             primitives.update(x["type"] for x in obj.items)
         for text in model.texts:

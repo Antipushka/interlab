@@ -8,7 +8,8 @@ from .model import PageModel, VectorObject
 
 def _style_key(obj: VectorObject):
     s = obj.style
-    return (str(s.stroke), str(s.fill), round(s.width, 6), s.dashes, str(s.line_cap), str(s.line_join), s.opacity, s.fill_opacity, obj.close_path)
+    return (str(s.stroke), str(s.fill), round(s.width, 6), str(s.dashes), s.dash_offset,
+        s.line_cap, s.line_join, s.opacity, s.fill_opacity, obj.close_path)
 
 
 def normalize(model: PageModel, tolerance: float = 1e-5) -> tuple[PageModel, dict]:

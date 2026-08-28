@@ -1,16 +1,118 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .model import Style, VectorObject
 
 
+_NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+
+
 def _number(value: Any) -> float | None:
     if isinstance(value, (int, float)) and math.isfinite(value):
         return float(value)
     return None
+
+
+def normalize_numeric_enum(
+    value: Any, allowed: set[int], field_name: str
+) -> int | None:
+    """Normalize PyMuPDF's integer-like style enums without lossy coercion."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be an integer enum or None, got {value!r}")
+    numeric = _number(value)
+    if numeric is None or not numeric.is_integer():
+        raise ValueError(f"{field_name} must be an integral finite value, got {value!r}")
+    normalized = int(numeric)
+    if normalized not in allowed:
+        raise ValueError(
+            f"{field_name} must be one of {sorted(allowed)} or None, got {value!r}"
+        )
+    return normalized
+
+
+def normalize_line_cap(value: Any) -> int | None:
+    """Collapse equal PyMuPDF cap tuples; reject unrepresentable mixed caps."""
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        caps = [normalize_numeric_enum(item, {0, 1, 2}, "lineCap") for item in value]
+        if not caps:
+            return None
+        if len(set(caps)) != 1:
+            raise ValueError(
+                f"lineCap contains different cap styles {value!r}; one SVG stroke-linecap cannot represent them losslessly"
+            )
+        return caps[0]
+    return normalize_numeric_enum(value, {0, 1, 2}, "lineCap")
+
+
+def _finite_number(value: Any, field_name: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a finite number, got {value!r}")
+    number = _number(value)
+    if number is None:
+        raise ValueError(f"{field_name} must be a finite number, got {value!r}")
+    return number
+
+
+def normalize_dashes(value: Any) -> tuple[list[float] | None, float]:
+    """Normalize PyMuPDF ``[dash array] phase`` strings and sequence forms."""
+    if value is None:
+        return None, 0.0
+    offset: Any = 0.0
+    if isinstance(value, str):
+        match = re.fullmatch(
+            rf"\s*\[\s*((?:{_NUMBER_PATTERN}(?:\s+{_NUMBER_PATTERN})*)?)\s*\]\s*({_NUMBER_PATTERN})\s*",
+            value,
+        )
+        if match is None:
+            raise ValueError(f"dashes has unsupported PyMuPDF representation {value!r}")
+        raw_pattern = [float(item) for item in match.group(1).split()] if match.group(1) else []
+        offset = float(match.group(2))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        if len(value) == 2 and isinstance(value[0], Sequence) and not isinstance(value[0], (str, bytes)):
+            raw_pattern, offset = value
+        else:
+            raw_pattern = value
+    else:
+        raise ValueError(f"dashes has unsupported PyMuPDF representation {value!r}")
+    pattern = [_finite_number(item, "dash length") for item in raw_pattern]
+    if any(item < 0 for item in pattern):
+        raise ValueError(f"dash lengths must be non-negative, got {value!r}")
+    normalized_offset = _finite_number(offset, "dash offset")
+    return (pattern or None), normalized_offset
+
+
+def _normalize_color(value: Any, field_name: str) -> list[float] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"{field_name} must be a numeric color sequence or None, got {value!r}")
+    color = [_finite_number(component, field_name) for component in value]
+    if not color or any(component < 0 or component > 1 for component in color):
+        raise ValueError(f"{field_name} components must be within [0, 1], got {value!r}")
+    return color
+
+
+def _normalize_opacity(value: Any, field_name: str) -> float:
+    opacity = _finite_number(value, field_name)
+    if opacity < 0 or opacity > 1:
+        raise ValueError(f"{field_name} must be within [0, 1], got {value!r}")
+    return opacity
+
+
+def _normalize_close_path(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value in (0, 1):
+        return bool(value)
+    raise ValueError(f"closePath must be boolean, 0, 1, or None, got {value!r}")
 
 
 def _point(value: Any) -> list[float] | None:
@@ -157,21 +259,26 @@ def parse_drawing(path: Mapping[str, Any], identifier: str, telemetry: dict[str,
 
     stroke_opacity = path.get("stroke_opacity", path.get("opacity", 1.0))
     fill_opacity = path.get("fill_opacity", path.get("opacity", 1.0))
+    width = _finite_number(path.get("width", 0) or 0, "width")
+    if width < 0:
+        raise ValueError(f"width must be non-negative, got {path.get('width')!r}")
+    dashes, dash_offset = normalize_dashes(path.get("dashes"))
     return VectorObject(
         id=identifier,
         items=items,
         style=Style(
-            stroke=list(path["color"]) if path.get("color") is not None else None,
-            fill=list(path["fill"]) if path.get("fill") is not None else None,
-            width=float(path.get("width") or 0),
-            dashes=path.get("dashes"),
-            line_cap=path.get("lineCap"),
-            line_join=path.get("lineJoin"),
-            opacity=float(stroke_opacity) if stroke_opacity is not None else 1.0,
-            fill_opacity=float(fill_opacity) if fill_opacity is not None else 1.0,
+            stroke=_normalize_color(path.get("color"), "color"),
+            fill=_normalize_color(path.get("fill"), "fill"),
+            width=width,
+            dashes=dashes,
+            dash_offset=dash_offset,
+            line_cap=normalize_line_cap(path.get("lineCap")),
+            line_join=normalize_numeric_enum(path.get("lineJoin"), {0, 1, 2}, "lineJoin"),
+            opacity=_normalize_opacity(stroke_opacity if stroke_opacity is not None else 1.0, "stroke_opacity"),
+            fill_opacity=_normalize_opacity(fill_opacity if fill_opacity is not None else 1.0, "fill_opacity"),
         ),
         rect=rect,
-        close_path=bool(path.get("closePath", False)),
+        close_path=_normalize_close_path(path.get("closePath")),
         layer=path.get("layer"),
         clip=_json_value(path.get("scissor")),
         source_ids=[identifier],
