@@ -20,3 +20,13 @@ Key outputs include `diagnostics.json`, both page SVGs and previews,
 `validation.json`, `page_01_apartment_seeds.json`, and
 `page_01/apartment_test_01.svg` (when a usable seed exists).
 
+## Running real validation in GitHub Actions
+
+Open the repository's **Actions** tab, select **Page 01 Validation**, choose
+**Run workflow**, and wait for the job to finish. Download the
+`interlab-page01-validation` artifact and review `run_summary.md`,
+`validation/page_01_reference_alignment_overlay.png`,
+`page_01/apartment_test_01.png`, and `page_01_normalized.svg`. The workflow
+uses the checked-in `input/Floorplan.pdf` and discovers `01.png` by basename
+inside `input/Планировки.zip`; generated files remain Actions artifacts and
+are not committed.
