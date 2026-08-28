@@ -43,7 +43,7 @@ jobs:
           import sys
           import cairosvg
           import cv2
-          import fitz
+          import pymupdf as fitz
           import numpy
           import PIL
           import shapely

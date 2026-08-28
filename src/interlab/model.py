@@ -26,6 +26,7 @@ class VectorObject:
     layer: str | None = None
     clip: Any = None
     source_ids: list[str] = field(default_factory=list)
+    sequence_number: int | None = None
 
 
 @dataclass
@@ -51,4 +52,3 @@ class PageModel:
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
-

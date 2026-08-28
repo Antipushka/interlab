@@ -4,42 +4,23 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import fitz
+import pymupdf as fitz
 
-from .model import PageModel, Style, TextSpan, VectorObject
-
-
-def _point(value: Any) -> list[float]:
-    return [float(value.x), float(value.y)]
+from .drawing_parser import parse_drawing
+from .model import PageModel, TextSpan
 
 
-def _item(item: tuple) -> dict[str, Any]:
-    kind = item[0]
-    if kind == "l":
-        return {"type": "line", "p1": _point(item[1]), "p2": _point(item[2])}
-    if kind == "c":
-        return {"type": "cubic", "p1": _point(item[1]), "c1": _point(item[2]), "c2": _point(item[3]), "p2": _point(item[4])}
-    if kind == "qu":
-        return {"type": "quad", "p1": _point(item[1]), "c": _point(item[2]), "p2": _point(item[3])}
-    if kind == "re":
-        r = item[1]
-        return {"type": "rect", "rect": [r.x0, r.y0, r.x1, r.y1], "orientation": item[2] if len(item) > 2 else None}
-    return {"type": kind, "values": [str(x) for x in item[1:]]}
-
-
-def extract_page(page: fitz.Page) -> PageModel:
+def extract_page(page: fitz.Page, telemetry: dict[str, Any] | None = None) -> PageModel:
+    if telemetry is None:
+        telemetry = {
+            "drawings_without_native_rect": 0,
+            "bboxes_calculated_from_primitives": 0,
+            "unsupported_primitive_count": 0,
+            "primitive_types_encountered": Counter(),
+        }
     vectors = []
     for n, path in enumerate(page.get_drawings(extended=True)):
-        vectors.append(VectorObject(
-            id=f"v{n}", items=[_item(x) for x in path.get("items", [])],
-            style=Style(
-                stroke=list(path["color"]) if path.get("color") is not None else None,
-                fill=list(path["fill"]) if path.get("fill") is not None else None,
-                width=float(path.get("width") or 0), dashes=path.get("dashes"),
-                line_cap=path.get("lineCap"), line_join=path.get("lineJoin"),
-                opacity=float(path.get("stroke_opacity", 1)), fill_opacity=float(path.get("fill_opacity", 1))),
-            rect=list(path["rect"]), close_path=bool(path.get("closePath")),
-            layer=path.get("layer"), clip=path.get("scissor"), source_ids=[f"v{n}"]))
+        vectors.append(parse_drawing(path, f"v{n}", telemetry))
     texts = []
     raw = page.get_text("rawdict")
     for block in raw.get("blocks", []):
@@ -64,7 +45,13 @@ def inspect_pdf(path: Path) -> tuple[dict[str, Any], PageModel]:
     pages = []
     first = None
     for index, page in enumerate(doc):
-        model = extract_page(page)
+        drawing_parse = {
+            "drawings_without_native_rect": 0,
+            "bboxes_calculated_from_primitives": 0,
+            "unsupported_primitive_count": 0,
+            "primitive_types_encountered": Counter(),
+        }
+        model = extract_page(page, drawing_parse)
         if first is None:
             first = model
         widths, strokes, fills, dashes, primitives, fonts, rotations, caps, joins = (Counter() for _ in range(9))
@@ -83,6 +70,7 @@ def inspect_pdf(path: Path) -> tuple[dict[str, Any], PageModel]:
             "image_count": len(page.get_images(full=True)), "stroke_widths": dict(widths), "stroke_colors": dict(strokes),
             "fills": dict(fills), "dash_patterns": dict(dashes), "primitive_types": dict(primitives),
             "line_caps": dict(caps), "line_joins": dict(joins),
+            "drawing_parse": {**drawing_parse, "primitive_types_encountered": dict(drawing_parse["primitive_types_encountered"])},
             "clipping": {"available": True, "objects_with_scissor": sum(x.clip is not None for x in model.vectors)},
             "fonts": dict(fonts), "text_rotations_degrees": dict(rotations),
             "text_transforms": dict(Counter(str(x.matrix) for x in model.texts))})

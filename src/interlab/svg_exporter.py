@@ -16,9 +16,16 @@ def _path(obj: VectorObject):
     for x in obj.items:
         if x["type"] == "line": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} L {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
         elif x["type"] == "cubic": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} C {x["c1"][0]:.6f} {x["c1"][1]:.6f} {x["c2"][0]:.6f} {x["c2"][1]:.6f} {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
-        elif x["type"] == "quad": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} Q {x["c"][0]:.6f} {x["c"][1]:.6f} {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
         elif x["type"] == "rect":
             r=x["rect"]; out.append(f'M {r[0]} {r[1]} H {r[2]} V {r[3]} H {r[0]} Z')
+        elif x["type"] == "quad":
+            points=x["points"]
+            out.append("M " + " L ".join(f"{p[0]:.6f} {p[1]:.6f}" for p in points) + " Z")
+        else:
+            raise ValueError(
+                f'cannot losslessly export primitive {x.get("source_type", x.get("type"))!r}: '
+                f'{x.get("reason", "unsupported internal representation")}'
+            )
     if obj.close_path: out.append("Z")
     return " ".join(out)
 
