@@ -6,17 +6,23 @@ from .model import PageModel
 
 
 def select_apartment(model: PageModel, points: list[list[float]]):
-    seed = Polygon(points)
-    band = max(model.width, model.height) * 0.003
-    inner = seed.buffer(-band); boundary = seed.boundary.buffer(band)
-    vectors, ownership, ambiguous = [], {}, []
+    """Classify every source object; retain doubtful boundary objects whole."""
+    seed = Polygon(points).buffer(0); band = max(model.width, model.height) * .004
+    inner=seed.buffer(-band); outer=seed.buffer(band); vectors=[]; ownership={}; ambiguous=[]
     for obj in model.vectors:
-        geom = box(*obj.rect)
-        if inner.intersects(geom): relation = "inside"
-        elif boundary.intersects(geom):
-            relation = "boundary"; ambiguous.append({"object_id":obj.id,"candidate_relations":["boundary","shared"],"reason":"seed is approximate"})
-        else: continue
-        vectors.append(obj); ownership[obj.id] = relation
-    texts = [t for t in model.texts if seed.covers(Point(t.origin))]
-    return PageModel(model.width, model.height, vectors, texts), ownership, ambiguous
-
+        geom=box(*obj.rect)
+        if seed.contains(geom): relation="inside"
+        elif inner.intersects(geom) and not seed.contains(geom): relation="boundary"
+        elif outer.intersects(geom):
+            relation="shared_candidate"
+            ambiguous.append({"object_id":obj.id,"candidate_relations":["boundary","shared_candidate"],"reason":"whole PDF object intersects approximate seed band"})
+        elif geom.area >= model.width*model.height*.5: relation="global"
+        else: relation="exclude"
+        ownership[obj.id]=relation
+        if relation != "exclude": vectors.append(obj)
+    texts=[]
+    for text in model.texts:
+        relation="inside" if seed.covers(Point(text.origin)) else "exclude"
+        ownership[text.id]=relation
+        if relation != "exclude": texts.append(text)
+    return PageModel(model.width,model.height,vectors,texts),ownership,ambiguous

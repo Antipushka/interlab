@@ -20,3 +20,8 @@ def test_corner_is_not_merged():
     normalized,_=normalize(model)
     assert len(normalized.vectors)==2
 
+
+def test_collinear_rays_in_same_direction_are_not_enlarged():
+    model=PageModel(100,100,[line("long",[0,0],[2,0]),line("short",[0,0],[1,0])],[])
+    normalized,_=normalize(model)
+    assert len(normalized.vectors)==2
