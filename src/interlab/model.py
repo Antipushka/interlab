@@ -9,9 +9,10 @@ class Style:
     stroke: list[float] | None
     fill: list[float] | None
     width: float
-    dashes: str | None = None
-    line_cap: Any = None
-    line_join: Any = None
+    dashes: list[float] | None = None
+    dash_offset: float = 0.0
+    line_cap: int | None = None
+    line_join: int | None = None
     opacity: float = 1.0
     fill_opacity: float = 1.0
 
@@ -26,6 +27,7 @@ class VectorObject:
     layer: str | None = None
     clip: Any = None
     source_ids: list[str] = field(default_factory=list)
+    sequence_number: int | None = None
 
 
 @dataclass
@@ -51,4 +53,3 @@ class PageModel:
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
-

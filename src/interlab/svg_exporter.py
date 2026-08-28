@@ -6,6 +6,10 @@ from pathlib import Path
 from .model import PageModel, VectorObject
 
 
+LINE_CAP_TO_SVG = {0: "butt", 1: "round", 2: "square"}
+LINE_JOIN_TO_SVG = {0: "miter", 1: "round", 2: "bevel"}
+
+
 def _color(c, default="none"):
     if c is None: return default
     return "#" + "".join(f"{max(0,min(255,round(x*255))):02x}" for x in c[:3])
@@ -16,9 +20,16 @@ def _path(obj: VectorObject):
     for x in obj.items:
         if x["type"] == "line": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} L {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
         elif x["type"] == "cubic": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} C {x["c1"][0]:.6f} {x["c1"][1]:.6f} {x["c2"][0]:.6f} {x["c2"][1]:.6f} {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
-        elif x["type"] == "quad": out.append(f'M {x["p1"][0]:.6f} {x["p1"][1]:.6f} Q {x["c"][0]:.6f} {x["c"][1]:.6f} {x["p2"][0]:.6f} {x["p2"][1]:.6f}')
         elif x["type"] == "rect":
             r=x["rect"]; out.append(f'M {r[0]} {r[1]} H {r[2]} V {r[3]} H {r[0]} Z')
+        elif x["type"] == "quad":
+            points=x["points"]
+            out.append("M " + " L ".join(f"{p[0]:.6f} {p[1]:.6f}" for p in points) + " Z")
+        else:
+            raise ValueError(
+                f'cannot losslessly export primitive {x.get("source_type", x.get("type"))!r}: '
+                f'{x.get("reason", "unsupported internal representation")}'
+            )
     if obj.close_path: out.append("Z")
     return " ".join(out)
 
@@ -27,10 +38,13 @@ def export_svg(model: PageModel, path: Path, ownership: dict[str,str] | None = N
     rows = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{model.width}pt" height="{model.height}pt" viewBox="0 0 {model.width} {model.height}">', '<g id="vectors">']
     for obj in model.vectors:
         s=obj.style; attrs = f'stroke="{_color(s.stroke)}" fill="{_color(s.fill)}" stroke-width="{s.width}" stroke-opacity="{s.opacity}" fill-opacity="{s.fill_opacity}"'
-        if s.dashes and s.dashes != "[] 0": attrs += f' stroke-dasharray="{html.escape(str(s.dashes))}"'
-        cap = s.line_cap[-1] if isinstance(s.line_cap, (list, tuple)) else s.line_cap
-        if cap in (0, 1, 2): attrs += f' stroke-linecap="{("butt", "round", "square")[cap]}"'
-        if s.line_join in (0, 1, 2): attrs += f' stroke-linejoin="{("miter", "round", "bevel")[s.line_join]}"'
+        if s.dashes:
+            attrs += ' stroke-dasharray="' + " ".join(f"{value:g}" for value in s.dashes) + '"'
+            attrs += f' stroke-dashoffset="{s.dash_offset:g}"'
+        if s.line_cap is not None:
+            attrs += f' stroke-linecap="{LINE_CAP_TO_SVG[s.line_cap]}"'
+        if s.line_join is not None:
+            attrs += f' stroke-linejoin="{LINE_JOIN_TO_SVG[s.line_join]}"'
         relation = ownership.get(obj.id) if ownership else None
         sources=html.escape(",".join(obj.source_ids), quote=True)
         rows.append(f'<path id="{obj.id}" d="{_path(obj)}" {attrs} data-source-ids="{sources}" data-ownership="{relation or "global"}"/>')
